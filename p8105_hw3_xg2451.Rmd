@@ -145,3 +145,110 @@ tmax_tmin_plot + snow_density_plot
 *  The left figure is a plot of tmax vs tmin from 1980 to 2010. It shows that most of the points fall into the center of the plot, where tmax ranges from 0 to 30 and tmin ranges from -15 to 20.
 * The right figure is the distribution of snowfall over the years. Although the distribution of snow are slightly different from year to year, they all share a similar pattern. 
 * The pattern shows that : the highest density is between 0 mm to 25 mm, and the lowest is greater than 90 mm. It means that the snowfall is usually between 0 mm to 25 mm and rarely over 90 mm.
+
+# Problem 2
+### Data Wrangling
+```{r}
+covar_df = read_csv("data/nhanes_covar.csv",skip = 4) |> 
+  janitor::clean_names() |>
+  filter(age>=21) |>  # exclude participants less than 21 years of age
+  drop_na() |>  # drop na
+  mutate(sex = factor(case_match(sex,  # encode data with reasonable variable classes
+                          1 ~ 'Male',
+                          2 ~ 'Female'),
+                          levels = c('Male','Female')),
+         education =factor(case_match(education,
+                          1 ~ 'Less than High School',
+                          2 ~ 'High School Equivalent',
+                          3 ~ 'More than High School'), 
+                          levels = c('Less than High School', 'High School Equivalent', 'More than High School'))) 
+```
+
+```{r}
+accel_df = read_csv("data/nhanes_accel.csv") |> 
+  janitor::clean_names()
+# merge data
+final_df = covar_df |> 
+  left_join(accel_df, by = 'seqn')
+```
+The final data includes `r nrow(final_df)` participants and the total `r ncol(final_df)` columns record their seqn, sex, age, bmi, education and MIMS values for `r ncol(final_df)-5` minutes of a 24-hour day starting at midnight. 
+
+### Produce table for the number of men and women in each education category
+```{r}
+final_df |> 
+  group_by(sex, education) |> 
+  summarize(count = n()) |> 
+  pivot_wider(names_from = sex, values_from = count) |> 
+  knitr::kable()
+```
+
+**Comment:** 
+
+In general, males and females with less than a high school education have similar proportions. However, for those with a high school equivalent, males outnumber females. On the other hand, for individuals with more than a high school education, both males and females have relatively higher numbers, with females slightly surpassing males.
+
+### Plot of age density
+```{r, fig.width = 8, fig.height = 3}
+final_df |> 
+  ggplot(aes(x=age, color = sex, fill = sex))+
+  geom_density(alpha = .5)+
+  facet_grid(~education)
+```
+
+**Comment:** 
+
+This graph shows age distributions by education level for males and females. In the "Less than High School" group, females are more concentrated in older ages. In the "High School Equivalent" group, males peak around middle age, while females are more evenly spread. For "More than High School," both genders have similar distributions, but females peak more in older ages compared to males.
+
+### Plot of total activities 
+```{r, fig.width = 8, fig.height = 3}
+final_df |> 
+  mutate(total_act = rowSums(final_df[6:ncol(final_df)])) |> 
+  ggplot(aes(x=age, y= total_act, fill = sex, color = sex))+
+  geom_point(alpha = .5)+
+  geom_smooth(se= F)+
+  facet_grid(~education)
+```
+
+**Comment:**
+
+- In all three panels, total activity tends to decrease with age for both men and women. The "Less than High School" and "High School Equivalent" panels show that men have a slightly higher activity level compared to women across ages, but both genders follow similar downward trends. In the "More than High School" panel, the activity levels for men and women are more closely aligned, with both declining at similar rates as age increases.
+
+- The trend lines show a consistent decrease in total activity with age across all education levels, but the decrease is less steep for those with more than a high school education.
+
+### Plot for 24-hour activity time
+```{r, fig.width = 10, fig.height = 6}
+final_df |> pivot_longer(
+  min1:min1440,
+  names_to = 'min',
+  names_prefix = 'min',
+  values_to = 'act_time'
+) |> 
+  mutate(
+    min = as.numeric(min),
+    hour = floor(min / 60)
+  ) |> 
+  group_by(
+    seqn, sex, age, education, hour
+  ) |> 
+  summarize(hourly_activity = sum(act_time)) |> 
+  ggplot(aes(x = hour, y = hourly_activity, color = sex)) +
+  facet_grid(.~education) +
+  geom_point(alpha = 0.1) +
+  geom_smooth()+ 
+  scale_y_continuous(limits = c(0, 1500))+ 
+  labs(title = 'Hourly Acitivity by Education and Sex')
+```
+
+**Comment:**
+
+In all three panels, there is a clear peak in activity during the daytime, roughly between 8 AM and 7 PM, with lower activity levels during the early morning and late evening. The "Less than High School" group shows a notable midday peak in activity for both sexes, with women having slightly higher activity than men. In the "High School Equivalent" group, the activity pattern is similar, but the peak is more evenly distributed between men and women. In the "More than High School" group, women tend to have higher activity levels than men, especially during the middle of the day, and the pattern appears smoother for both sexes.
+
+
+
+
+
+
+
+
+
+
+
